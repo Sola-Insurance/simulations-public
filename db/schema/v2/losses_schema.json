@@ -1,0 +1,7 @@
+[
+    { "name": "run_timestamp", "type": "TIMESTAMP", "mode": "NULLABLE" },
+    { "name": "sim_id", "type": "INT64", "mode": "NULLABLE" },
+    { "name": "geo_type", "type": "INT64", "mode": "NULLABLE" },
+    { "name": "geography", "type": "STRING", "mode": "NULLABLE" },
+    { "name": "total", "type": "FLOAT64", "mode": "NULLABLE" }
+]
