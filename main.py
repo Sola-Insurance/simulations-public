@@ -128,14 +128,14 @@ def _start_simulation(
         output_writers = []
         if output_bigquery:
             output_writers.append(
-                generate_sample_hailstorms.setup_bigquery_writer(PROJECT_ID, BIGQUERY_OUTPUT_DATASET)
+                generate_losses.setup_bigquery_writer(PROJECT_ID, BIGQUERY_OUTPUT_DATASET)
             )
         else:
             logging.warning('Running simulation without output.')
 
         outputs = simulation_output.SerialOutput(output_writers)
         try:
-            generate_sample_hailstorms.run_losses(
+            generate_losses.run_losses(
                 sim_id,
                 run_timestamp,
                 outputs,

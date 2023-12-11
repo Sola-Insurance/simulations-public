@@ -37,10 +37,9 @@ We obscure most all of this through the abstract APIs of the writers and fanout.
 Usage:
 ```
 # Build a writer or writers for the hail simulation
-storm_type = 'hail'
 writers = [
-  LocalCsvWriter(output_dir, storm_type),
-  BigqueryWriter(project_id, storm_type)
+  LocalCsvWriter(output_dir),
+  BigqueryWriter(project_id)
 ]
 ```
 
@@ -199,10 +198,11 @@ class MultiprocessingOutput(OutputFanout):
 
         logger.info('Output processing complete.')
 
+
 class BufferedOutputStream:
     """For outputting many rows through the outputs, buffers rows before flushing them in one big write.
 
-    With the switch to the v2 schema, we're writting many more rows. As a result, IO is now important. Writing one
+    With the switch to the v2 schema, we're writing many more rows. As a result, IO is now important. Writing one
     row at a time may carry overhead.
 
     This is a decorator for buffer output rows for each output.
@@ -284,18 +284,16 @@ class LocalCsvWriter(RowWriter):
 
     Note: to minimize file I/O, we keep each file open until the end of the run.
     """
-    OUTPUTS_TO_FILENAME_FMT = '{output_dir}{slash}{storm_type}_{output_name}.csv'
+    OUTPUTS_TO_FILENAME_FMT = '{output_dir}{slash}_{output_name}.csv'
 
-    def __init__(self, output_dir: str, storm_type: str, overwrite=False):
+    def __init__(self, output_dir: str, overwrite=False):
         """
         :param output_dir: Where output CSV files will be written.
-        :param storm_type: The type of storms being simulated.
         :param overwrite: Boolean, if False, tries to avoid overwriting an existing file. Note, this only checks the
             known output names at initialization.
         """
         super().__init__()
         self.output_dir = output_dir
-        self.storm_type = storm_type
         self.file_writers = {}
         self.overwrite = overwrite
 
@@ -320,7 +318,6 @@ class LocalCsvWriter(RowWriter):
         return LocalCsvWriter.OUTPUTS_TO_FILENAME_FMT.format(
             output_dir=self.output_dir,
             slash='/' if not self.output_dir.endswith('/') else '',
-            storm_type=self.storm_type,
             output_name=output_name
         )
 
@@ -378,17 +375,15 @@ class BigqueryRowWriter(RowWriter):
     Example doc: https://cloud.google.com/python/docs/reference/lifesciences/latest/multiprocessing
     """
     DEFAULT_DATASET = 'simulations_v2'
-    OUTPUT_TABLENAME_FMT = '{dataset}.{storm_type}_{output_name}'
+    OUTPUT_TABLENAME_FMT = '{dataset}._{output_name}'
 
-    def __init__(self, project_id: str, storm_type: str, dataset: str = DEFAULT_DATASET):
+    def __init__(self, project_id: str, dataset: str = DEFAULT_DATASET):
         """
         :param project_id: The GCP project in which the bigquery table lives.
-        :param storm_type: The type of storm being simulated.
         :param dataset: The dataset container for the bigquery table.
         """
         super().__init__()
         self.project_id = project_id
-        self.storm_type = storm_type
         self.dataset = dataset
         self.client = None  # Wait to create the client until lazy_initialize, in case we're multiprocessing.
 
@@ -398,7 +393,7 @@ class BigqueryRowWriter(RowWriter):
 
     def format_tablename(self, output_name: str) -> str:
         return BigqueryRowWriter.OUTPUT_TABLENAME_FMT.format(
-            dataset=self.dataset, storm_type=self.storm_type, output_name=output_name)
+            dataset=self.dataset, output_name=output_name)
 
     def write_rows(self, output_name, rows: Union[Iterable[dict], dict]):
         """Insert the given dict row into the bigiquery."""

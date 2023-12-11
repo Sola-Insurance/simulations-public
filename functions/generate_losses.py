@@ -14,7 +14,7 @@ from db.v2 import geo_types
 from functions import simulation_logging, simulation_output
 from geojson import Feature, MultiPolygon, Point, FeatureCollection
 from random import randint
-from storm import hail_storm
+from storm import storm
 from tqdm import tqdm
 from typing import List, Union
 from turfpy.measurement import points_within_polygon
@@ -22,7 +22,7 @@ from turfpy.measurement import points_within_polygon
 
 """Generate Losses, running multiple simulations of storms across states, outputting the results.
 
-This script runs simulations of randomly generated hail storms, measuring the dollar impact of each storm against
+This script runs simulations of randomly generated storms, measuring the dollar impact of each storm against
 samples of properties. Each simulation:
   1. Iterates through a fixed list of states, for each state:
   2. Selects a group of properties for the state. Each simulation has a pre-chosen sample of properties available. It
@@ -66,7 +66,7 @@ $cmd --output_csv
 
 # Run 100 simulations, multiprocessing (on by default), outputting CSV files and overwrite them if they exist.
 # Log to a file instead of stderr
-$cmd -n 100 --output_csv --csv_overwrite --no-log_stderr --log_file hail_sim.log
+$cmd -n 100 --output_csv --csv_overwrite --no-log_stderr --log_file sim.log
 
 # Run simulations, uploading the resulting CSV to bigquery OVERWRITING the tables.
 $cmd --output_csv --upload_csv_to_bigquery_overwrite  --project_id <gcp_project_id> 
@@ -83,9 +83,8 @@ $cmd -n 10 --no-multiprocess --states TN GA
 
 
 # Default number of simulations to run, split in parallel across a number of processes.
-STORM_TYPE = 'hail'
 DEFAULT_NUM_SIMULATIONS = 1000
-DEFAULT_SIMULATIONS_CSV_OUTPUT_DIR = f'files/{STORM_TYPE}_output'
+DEFAULT_SIMULATIONS_CSV_OUTPUT_DIR = f'files/output'
 DEFAULT_LOG_FORMAT = '[%(levelname)s] %(message)s'
 DATED_LOG_FORMAT = '%(asctime)s|' + DEFAULT_LOG_FORMAT
 SIMULATION_MAX_RETRIES = 3
@@ -111,24 +110,6 @@ Assumptions
 --------------
 """
 
-# Dictionary that defines the payout for its respective hail storm (70% hail damage gets a $2000) payout
-hail_payout_dict = {
-    "70": 2000,
-    "80": 5000
-}
-
-# Dictionary that defines the premium we charge in each state
-state_to_prem = {
-    "AR": 130.00,
-    "GA": 80.00,
-    "IN": 120.00,
-    "IL": 120.00,
-    "IA": 160.00,
-    "KY": 150.00,
-    "TN": 100.00,
-    "MO": 200.00,
-    "OH": 100.00
-}
 
 zip_to_prem_file = open('../lib/premium/zip_to_prem.json', 'r')
 zip_to_prem = json.load(zip_to_prem_file)
@@ -437,33 +418,22 @@ def run_losses(sim_id: int,
     limit = randint(950, 2050)
     logger.info(f'Generating {limit} storms')
     while num_storms <= limit:
-        storm = hail_storm.generate_hail_polygon(hail_payout_dict)
-        if not storm:
+        sample_storm = storm.generate_polygon()
+        if not sample_storm:
             pass
         else:
-            storms.append(storm)
+            storms.append(sample_storm)
             num_storms += 1
 
-    multi_hail_dict = {
-        "70": {},
-        "80": {},
-    }
 
-    # Search exposures that fall within the hail storm
+    # Search exposures that fall within the storm
     logger.info('Calculating storm impact')
-    for severity in multi_hail_dict.keys():
-        same_sev_coordinates = [sev_storm['geometry']['coordinates'] for sev_storm in storms if
-                                sev_storm['properties']['severity'] == severity]
-        sev_multi = MultiPolygon(coordinates=same_sev_coordinates)
-        multi_hail_dict[severity] = Feature(geometry=sev_multi)
 
-    for severity, hail_poly in multi_hail_dict.items():
-        if severity not in hail_payout_dict:
-            continue
-        if len(hail_poly['geometry']['coordinates']) > 0:
-            damaged_homes = points_within_polygon(exposure_fc, hail_poly)
+    for storm_poly in storms:
+        if len(storm_poly['geometry']['coordinates']) > 0:
+            damaged_homes = points_within_polygon(exposure_fc, storm_poly)
 
-            payout = hail_payout_dict[severity]
+            payout = 10000
 
             for damaged_home in damaged_homes['features']:
                 loss_dictionary['total'] += payout
@@ -553,13 +523,13 @@ def setup_bigquery_writer(project_id: str, dataset: str) -> simulation_output.Bi
     logging.debug('Preparing Bigquery Output Writer')
     if not project_id:
         raise Exception('--project_id is REQUIRED when using the --output_bigquery flag')
-    return simulation_output.BigqueryRowWriter(project_id, STORM_TYPE, dataset=dataset)
+    return simulation_output.BigqueryRowWriter(project_id, dataset=dataset)
 
 
 def setup_csv_writer(csv_output_dir: str, overwrite: bool) -> simulation_output.LocalCsvWriter:
     """Build a LocalCsvWriter from the CLI args."""
     logging.debug('Preparing CSV Output Writer')
-    return simulation_output.LocalCsvWriter(csv_output_dir, STORM_TYPE, overwrite=overwrite)
+    return simulation_output.LocalCsvWriter(csv_output_dir, overwrite=overwrite)
 
 
 def setup_arguments(parser: argparse.ArgumentParser):
@@ -678,7 +648,7 @@ def validate_arguments(args):
 
 
 def main():
-    parser = argparse.ArgumentParser('Run hailstorm simulations.')
+    parser = argparse.ArgumentParser('Run storm simulations.')
     setup_arguments(parser)
     args = parser.parse_args()
     validate_arguments(args)
